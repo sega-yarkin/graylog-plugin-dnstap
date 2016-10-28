@@ -7,7 +7,7 @@ The plugin provides an input for the [Dnstap protocol](http://dnstap.info/) in G
 It can be used to receive data from logs provided by [`fstrm_capture`](https://github.com/farsightsec/fstrm)
 (e.g. `socat FILE:/var/log/unbound/unbound.dnstap TCP:graylog-server:6000`)
 or to communicate with DNS server directly
-(e.g. `socat UNIX-LISTEN:/var/run/unbound/dnstap.sock,user=unbound,unlink-early TCP:graylog-server:6000`).
+(e.g. `socat UNIX-LISTEN:/var/run/unbound/dnstap.sock,user=unbound,unlink-early,fork TCP:graylog-server:6000,nodelay,pf=ip4`).
 
 Installation
 ------------
