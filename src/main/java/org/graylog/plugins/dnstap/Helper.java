@@ -212,39 +212,73 @@ public class Helper {
         private ArrayList<String> getAnswersDataList() {
             Record[] list = _dns.getSectionArray(Section.ANSWER);
             ArrayList<String> result = new ArrayList<>(list.length);
-            InetAddress addr;
-            Name name;
-            int num;
             for (int i=0; i<list.length; i++) {
                 switch (list[i].getType()) {
                     case Type.A:
-                        addr = ((org.xbill.DNS.ARecord)list[i]).getAddress();
-                        if (addr != null) {
-                            result.add(addr.getHostAddress());
-                        }
+                        addAnswerToList(result, ((org.xbill.DNS.ARecord)list[i]).getAddress());
                         break;
                     case Type.AAAA:
-                        addr = ((org.xbill.DNS.AAAARecord)list[i]).getAddress();
-                        if (addr != null) {
-                            result.add(addr.getHostAddress());
-                        }
-                        break;
-                    case Type.CNAME:
-                        name = ((org.xbill.DNS.CNAMERecord)list[i]).getTarget();
-                        if (name != null) {
-                            result.add(name.toString(true));
-                        }
+                        addAnswerToList(result, ((org.xbill.DNS.AAAARecord)list[i]).getAddress());
                         break;
                     case Type.MX:
-                        name = ((org.xbill.DNS.MXRecord)list[i]).getTarget();
-                        num = ((org.xbill.DNS.MXRecord)list[i]).getPriority();
-                        if (name != null) {
-                            result.add(name.toString(true) + "("+num+")");
-                        }
+                        addAnswerToList(result, (org.xbill.DNS.MXRecord)list[i]);
                         break;
+                    case Type.CNAME:
+                        addAnswerToList(result, ((org.xbill.DNS.CNAMERecord)list[i]).getTarget());
+                        break;
+                    case Type.NS:
+                        addAnswerToList(result, ((org.xbill.DNS.NSRecord)list[i]).getTarget());
+                        break;
+                    case Type.SRV:
+                        addAnswerToList(result, ((org.xbill.DNS.SRVRecord)list[i]).getTarget());
+                        break;
+                    case Type.PTR:
+                        addAnswerToList(result, ((org.xbill.DNS.PTRRecord)list[i]).getTarget());
+                        break;
+                    case Type.SOA:
+                        addAnswerToList(result, (org.xbill.DNS.SOARecord)list[i]);
                 }
             }
             return result;
+        }
+
+        private void addAnswerToList(final ArrayList<String> list,
+                                     final InetAddress addr) {
+            if (addr != null) {
+                list.add(addr.getHostAddress());
+            }
+        }
+
+        private void addAnswerToList(final ArrayList<String> list,
+                                     final Name name) {
+            if (name != null) {
+                list.add(name.toString(true));
+            }
+        }
+
+        private void addAnswerToList(final ArrayList<String> list,
+                                     final org.xbill.DNS.MXRecord mx) {
+            final Name name = mx.getTarget();
+            final int  pri  = mx.getPriority();
+            if (name != null) {
+                list.add(name.toString(true) + "("+pri+")");
+            }
+        }
+
+        private void addAnswerToList(final ArrayList<String> list,
+                                     final org.xbill.DNS.SOARecord soa) {
+            final Name host = soa.getHost();
+            if (host != null) {
+                final Name admin = soa.getAdmin();
+                final String answer = "(" + host.toString(true)
+                    + " " + ((admin != null) ? admin.toString(true) : "")
+                    + " " + soa.getSerial()
+                    + " " + soa.getRefresh()
+                    + " " + soa.getRetry()
+                    + " " + soa.getExpire()
+                    + " " + soa.getMinimum() +")";
+                list.add(answer);
+            }
         }
 
     }
