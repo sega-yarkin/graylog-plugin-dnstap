@@ -5,7 +5,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
+import org.jboss.netty.handler.codec.frame.FrameDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.IOException;
@@ -39,7 +39,7 @@ import java.io.InputStream;
 
 */
 
-public class FstrmFrameDecoder extends ReplayingDecoder<FstrmFrameDecoder.DecodingState> {
+public class FstrmFrameDecoder extends FrameDecoder {
     private static final Logger Log = LoggerFactory.getLogger(FstrmFrameDecoder.class);
 
     private static final int CONTROL_FRAME_MARKER = 0x00000000;
@@ -52,77 +52,65 @@ public class FstrmFrameDecoder extends ReplayingDecoder<FstrmFrameDecoder.Decodi
     private static final int FSTRM_CONTROL_READY  = 0x04;
     private static final int FSTRM_CONTROL_FINISH = 0x05;
 
-    enum DecodingState {
-        FRAME_SIZE,
-        FRAME_DATA,
-        FRAME_CONTROL
-    }
-
     private int frameSize;
 
     public FstrmFrameDecoder() {
-        super(DecodingState.FRAME_SIZE, true);
+        super(true);
     }
 
     @Override
     protected
     ChannelBuffer decode(final ChannelHandlerContext ctx,
                          final Channel channel,
-                         final ChannelBuffer buffer,
-                         final DecodingState state) throws Exception {
-        switch (state) {
-            case FRAME_SIZE:
-                return readFrameSize(channel, buffer);
-            case FRAME_CONTROL:
-                return handleControlFrame(channel, buffer);
-            case FRAME_DATA:
-                return handleDataFrame(channel, buffer);
+                         final ChannelBuffer buffer) throws Exception {
+        // We need at least 4 bytes
+        if (buffer.readableBytes() < 4) {
+            return null;
         }
-        return null;
-    }
-
-
-    private
-    ChannelBuffer readFrameSize(final Channel channel,
-                                final ChannelBuffer buffer) {
-        this.frameSize = (int) buffer.readUnsignedInt();
-        Log.trace("Received frame size {}", this.frameSize);
-        if (this.frameSize == CONTROL_FRAME_MARKER) {
-            checkpoint(DecodingState.FRAME_CONTROL);
+        buffer.markReaderIndex();
+        // Read next frame size
+        final int frameSize = (int) buffer.readUnsignedInt();
+        Log.trace("Received frame size {}", frameSize);
+        // Have we got a control frame?
+        if (frameSize == CONTROL_FRAME_MARKER) {
+            final boolean enoughBytes = handleControlFrame(channel, buffer);
+            if (! enoughBytes) {
+                buffer.resetReaderIndex();
+            }
+            return null;
+        }
+        // The buffer has not enough data
+        if (buffer.readableBytes() < frameSize) {
+            buffer.resetReaderIndex();
+            return null;
         }
         else {
-            checkpoint(DecodingState.FRAME_DATA);
+            final ChannelBuffer payload = buffer.readSlice(frameSize);
+            Log.trace("Received data frame");
+            return payload;
         }
-        return null;
     }
 
-    private
-    ChannelBuffer handleDataFrame(final Channel channel,
-                                  final ChannelBuffer buffer) throws Exception {
-        if (this.frameSize < 1) {
-            throw new Exception("Invalid payload size");
-        }
 
-        final ChannelBuffer payload = buffer.readSlice(this.frameSize);
-        Log.trace("Received data frame");
-        checkpoint(DecodingState.FRAME_SIZE);
-        return payload;
-    }
-
-    private
-    ChannelBuffer handleControlFrame(final Channel channel,
+    private boolean handleControlFrame(final Channel channel,
                                      final ChannelBuffer buffer) throws Exception {
+        // We need at least 4 bytes
+        if (buffer.readableBytes() < 4) {
+            return false;
+        }
         final int controlSize = (int) buffer.readUnsignedInt();
         Log.trace("Received control frame with size {}", controlSize);
         if (controlSize > CONTROL_FRAME_LENGTH_MAX) {
             throw new Exception("Too big control frame size");
+        }
+        if (buffer.readableBytes() < controlSize) {
+            return false;
         }
         final int controlType = (int) buffer.readUnsignedInt();
         Log.trace("Received control frame #{}", controlType);
         final int payloadSize = controlSize - 4;
         byte[] payload = new byte[payloadSize];
         buffer.readBytes(payload, 0, payloadSize);
-        checkpoint(DecodingState.FRAME_SIZE);
         //
         switch (controlType) {
             case FSTRM_CONTROL_START:
@@ -138,7 +126,7 @@ public class FstrmFrameDecoder extends ReplayingDecoder<FstrmFrameDecoder.Decodi
                 throw new Exception("Unknown control frame type");
         }
         //
-        return null;
+        return true;
     }
 
     private void sendAccept(final Channel channel,
